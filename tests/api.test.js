@@ -72,4 +72,32 @@ describe("StellarKit API", () => {
       expect(res.body.success).toBe(false);
     });
   });
+
+  describe("GET /account/:id/analytics", () => {
+  it("returns analytics for a valid account", async () => {
+    const res = await request(app).get(
+      "/account/GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN/analytics"
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    expect(res.body.data).toHaveProperty("totalSent");
+    expect(res.body.data).toHaveProperty("totalReceived");
+    expect(res.body.data).toHaveProperty("topAssets");
+    expect(res.body.data).toHaveProperty("avgTransactionsPerDay");
+    expect(res.body.data).toHaveProperty("firstSeen");
+    expect(res.body.data).toHaveProperty("lastSeen");
+
+    expect(res.body.data.topAssets).toBeInstanceOf(Array);
+  });
+
+  it("returns 400 for invalid account ID", async () => {
+    const res = await request(app).get("/account/INVALID_KEY/analytics");
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.type).toBe("ValidationError");
+  });
+});
 });
