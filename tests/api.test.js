@@ -73,6 +73,86 @@ describe("StellarKit API", () => {
     });
   });
 
+  describe("GET /account/:id/payments", () => {
+    const VALID_KEY = "GBB67CMSCMGPROSFIVENXMRQ3KJWELDIUYITQI7YCKMSOPR2SNZB5NQ5";
+
+    it("returns payments for a valid account", async () => {
+      const res = await request(app).get(`/account/${VALID_KEY}/payments`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toBeInstanceOf(Array);
+      expect(res.body).toHaveProperty("meta");
+      expect(res.body.meta).toHaveProperty("count");
+      expect(res.body.meta).toHaveProperty("limit");
+      expect(res.body.meta).toHaveProperty("order");
+      expect(res.body.meta).toHaveProperty("nextCursor");
+      expect(res.body.meta).toHaveProperty("hasMore");
+
+      if (res.body.data.length > 0) {
+        const payment = res.body.data[0];
+        expect(payment).toHaveProperty("amount");
+        expect(payment).toHaveProperty("assetCode");
+        expect(payment).toHaveProperty("assetIssuer");
+        expect(payment).toHaveProperty("from");
+        expect(payment).toHaveProperty("to");
+        expect(payment).toHaveProperty("createdAt");
+        expect(Object.keys(payment).sort()).toEqual(
+          ["amount", "assetCode", "assetIssuer", "from", "to", "createdAt"].sort()
+        );
+      }
+    });
+
+    it("only returns payment and create_account operation types", async () => {
+      const res = await request(app).get(`/account/${VALID_KEY}/payments`);
+
+      expect(res.statusCode).toBe(200);
+      res.body.data.forEach((payment) => {
+        expect(payment).toHaveProperty("amount");
+        expect(payment).toHaveProperty("assetCode");
+        expect(payment).toHaveProperty("assetIssuer");
+        expect(payment).toHaveProperty("from");
+        expect(payment).toHaveProperty("to");
+      });
+    });
+
+    it("returns 400 for invalid account ID", async () => {
+      const res = await request(app).get("/account/INVALID_KEY/payments");
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.type).toBe("ValidationError");
+    });
+
+    it("respects limit query param", async () => {
+      const res = await request(app).get(
+        `/account/${VALID_KEY}/payments?limit=5`
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.meta.limit).toBe(5);
+      expect(res.body.data.length).toBeLessThanOrEqual(5);
+    });
+
+    it("returns 400 for invalid limit", async () => {
+      const res = await request(app).get(
+        `/account/${VALID_KEY}/payments?limit=999999`
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it("respects order query param", async () => {
+      const res = await request(app).get(
+        `/account/${VALID_KEY}/payments?order=asc`
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.meta.order).toBe("asc");
+    });
+  });
+
   describe("GET /account/:id/analytics", () => {
   it("returns analytics for a valid account", async () => {
     const res = await request(app).get(

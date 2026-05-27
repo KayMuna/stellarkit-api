@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { server } = require("../config/stellar");
 const { success } = require("../utils/response");
-const { validateAccountId } = require("../utils/validators");
+const { validateAccountId, validateLimit } = require("../utils/validators");
 
 /**
  * GET /account/:id
@@ -110,6 +110,85 @@ router.get("/:id/summary", async (req, res, next) => {
         claimableResult.status === "fulfilled"
           ? claimableResult.value.records
           : [],
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /account/:id/payments
+ * Returns only payment and create_account operations for an account,
+ * filtered from the full operations list.
+ *
+ * Query params:
+ *   - limit   (number, default: 10, max: 200)
+ *   - cursor  (string, pagination cursor from previous response)
+ *   - order   ("asc" | "desc", default: "desc")
+ *
+ * @param {string} id - Stellar account public key (G...)
+ *
+ * @example
+ * GET /account/GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN/payments
+ * GET /account/GAAZI4.../payments?limit=20&order=asc
+ */
+router.get("/:id/payments", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    validateAccountId(id);
+
+    const limit = validateLimit(req.query.limit || 10, 200);
+    const order = ["asc", "desc"].includes(req.query.order)
+      ? req.query.order
+      : "desc";
+    const cursor = req.query.cursor || undefined;
+
+    let query = server
+      .operations()
+      .forAccount(id)
+      .limit(limit)
+      .order(order);
+
+    if (cursor) query = query.cursor(cursor);
+
+    const opResponse = await query.call();
+    const rawRecords = opResponse.records;
+
+    const paymentOps = [];
+    let lastPaymentIndex = -1;
+
+    rawRecords.forEach((op, idx) => {
+      if (op.type === "payment" || op.type === "create_account") {
+        paymentOps.push({
+          amount: op.type === "payment" ? op.amount : op.starting_balance,
+          assetCode: op.type === "payment"
+            ? (op.asset_code || "XLM")
+            : "XLM",
+          assetIssuer: op.type === "payment"
+            ? (op.asset_issuer || null)
+            : null,
+          from: op.type === "payment" ? op.from : op.funder,
+          to: op.type === "payment" ? op.to : op.account,
+          createdAt: op.created_at,
+        });
+        lastPaymentIndex = idx;
+      }
+    });
+
+    const nextCursor = lastPaymentIndex >= 0
+      ? rawRecords[lastPaymentIndex].paging_token
+      : rawRecords.length > 0
+        ? rawRecords[rawRecords.length - 1].paging_token
+        : null;
+
+    return success(res, paymentOps, {
+      meta: {
+        count: paymentOps.length,
+        limit,
+        order,
+        nextCursor,
+        hasMore: rawRecords.length === limit,
+      },
     });
   } catch (err) {
     next(err);
