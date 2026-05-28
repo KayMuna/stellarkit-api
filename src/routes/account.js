@@ -5,6 +5,15 @@ const { success } = require("../utils/response");
 const { validateAccountId, validateLimit } = require("../utils/validators");
 const { accountSummaryRateLimiter } = require("../middleware/rateLimiter");
 
+const handleAccountNotFound = (err, next) => {
+  if (err.response && err.response.status === 404) {
+    const notFoundErr = new Error("Account not found.");
+    notFoundErr.status = 404;
+    return next(notFoundErr);
+  }
+  next(err);
+};
+
 function formatAccountBalances(account) {
   const xlmBalance = account.balances.find((b) => b.asset_type === "native");
   const assets = account.balances
@@ -93,7 +102,7 @@ router.get("/:id", async (req, res, next) => {
       lastModifiedLedger: account.last_modified_ledger,
     });
   } catch (err) {
-    next(err);
+    handleAccountNotFound(err, next);
   }
 });
 
@@ -115,7 +124,7 @@ router.get("/:id/balances", async (req, res, next) => {
 
     return success(res, formatAccountBalances(account));
   } catch (err) {
-    next(err);
+    handleAccountNotFound(err, next);
   }
 });
 
@@ -141,7 +150,7 @@ router.get("/:id/sequence", async (req, res, next) => {
       lastModifiedLedger: account.last_modified_ledger,
     });
   } catch (err) {
-    next(err);
+    handleAccountNotFound(err, next);
   }
 });
 
@@ -184,7 +193,69 @@ router.get("/:id/summary", accountSummaryRateLimiter, async (req, res, next) => 
           : [],
     });
   } catch (err) {
-    next(err);
+    handleAccountNotFound(err, next);
+  }
+});
+
+/**
+ * GET /account/:id/merge-eligibility
+ * Checks whether an account is eligible to be merged.
+ *
+ * Verifies:
+ * - Zero non-native asset balances
+ * - No open offers
+ * - No open trustlines (excluding native XLM)
+ * - No data entries
+ *
+ * @param {string} id - Stellar account public key (G...)
+ *
+ * @example
+ * GET /account/GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN/merge-eligibility
+ */
+router.get("/:id/merge-eligibility", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    validateAccountId(id);
+
+    const account = await server.loadAccount(id);
+    const blockers = [];
+
+    // 1. Check for non-native asset balances and open trustlines
+    const nonNativeBalances = account.balances.filter(b => b.asset_type !== "native");
+    if (nonNativeBalances.length > 0) {
+      const hasPositiveBalance = nonNativeBalances.some(b => parseFloat(b.balance) > 0);
+      if (hasPositiveBalance) {
+        blockers.push("Account has non-native asset balances. All assets must be sent or burned before merging.");
+      }
+      blockers.push(`Account has ${nonNativeBalances.length} open trustline(s). All trustlines must be removed.`);
+    }
+
+    // 2. Check for open offers
+    const offers = await server.offers().forAccount(id).limit(1).call();
+    if (offers.records.length > 0) {
+      blockers.push("Account has open offers. All offers must be cancelled.");
+    }
+
+    // 3. Check for data entries
+    const dataEntries = Object.keys(account.data_attr || {});
+    if (dataEntries.length > 0) {
+      blockers.push(`Account has ${dataEntries.length} data entry/entries. All data entries must be removed.`);
+    }
+
+    return success(res, {
+      eligible: blockers.length === 0,
+      blockers,
+      accountDetails: {
+        accountId: account.id,
+        subentryCount: account.subentry_count,
+        balances: account.balances.map(b => ({
+          asset: b.asset_type === "native" ? "XLM" : `${b.asset_code}:${b.asset_issuer}`,
+          balance: b.balance
+        }))
+      }
+    });
+  } catch (err) {
+    handleAccountNotFound(err, next);
   }
 });
 
@@ -265,7 +336,86 @@ router.get("/:id/payments", async (req, res, next) => {
       },
     });
   } catch (err) {
-    next(err);
+    handleAccountNotFound(err, next);
+  }
+});
+
+/**
+ * GET /account/:id/data
+ * Returns all data entries for an account with both raw and decoded values.
+ *
+ * @param {string} id - Stellar account public key (G...)
+ *
+ * @example
+ * GET /account/GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN/data
+ */
+router.get("/:id/data", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    validateAccountId(id);
+
+    const account = await server.loadAccount(id);
+    const dataEntries = account.data_attr || {};
+
+    const formattedData = Object.entries(dataEntries).map(([key, rawValue]) => {
+      let decodedValue = null;
+      try {
+        decodedValue = Buffer.from(rawValue, "base64").toString("utf8");
+      } catch (e) {
+        // Not decodable as UTF-8
+      }
+
+      return {
+        key,
+        rawValue,
+        decodedValue,
+      };
+    });
+
+    return success(res, formattedData);
+  } catch (err) {
+    handleAccountNotFound(err, next);
+  }
+});
+
+/**
+ * GET /account/:id/data/:key
+ * Returns a single data entry by key.
+ *
+ * @param {string} id - Stellar account public key (G...)
+ * @param {string} key - The data entry key
+ *
+ * @example
+ * GET /account/GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN/data/my_key
+ */
+router.get("/:id/data/:key", async (req, res, next) => {
+  try {
+    const { id, key } = req.params;
+    validateAccountId(id);
+
+    const account = await server.loadAccount(id);
+    const rawValue = account.data_attr ? account.data_attr[key] : null;
+
+    if (!rawValue) {
+      const err = new Error(`Data entry with key "${key}" not found.`);
+      err.status = 404;
+      return next(err);
+    }
+
+    let decodedValue = null;
+    try {
+      decodedValue = Buffer.from(rawValue, "base64").toString("utf8");
+    } catch (e) {
+      // Not decodable as UTF-8
+    }
+
+    return success(res, {
+      key,
+      rawValue,
+      decodedValue,
+    });
+  } catch (err) {
+    handleAccountNotFound(err, next);
   }
 });
 

@@ -3,6 +3,7 @@ const axios = require("axios");
 const router = express.Router();
 const { success } = require("../utils/response");
 const { validateAccountId } = require("../utils/validators");
+const { Transaction, Networks } = require("@stellar/stellar-sdk");
 
 const FRIENDBOT_URL = "https://friendbot.stellar.org";
 const { decodeMemo } = require("../utils/memo");
@@ -82,6 +83,10 @@ router.get("/memo", (req, res, next) => {
     }
     err.isValidation = true;
     return next(err);
+  }
+});
+
+/**
  * GET /utils/base64
  * Encode or decode a string using Base64.
  *
@@ -188,6 +193,75 @@ router.get("/validate-asset", (req, res, next) => {
       assetType,
       reason,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /utils/decode-xdr
+ * Decode a base64-encoded Stellar transaction XDR envelope into JSON.
+ *
+ * @param {string} xdr - The base64-encoded transaction XDR envelope.
+ *
+ * @example
+ * POST /utils/decode-xdr
+ * { "xdr": "AAAAAgAAAAD..." }
+ */
+router.post("/decode-xdr", (req, res, next) => {
+  try {
+    const { xdr } = req.body;
+
+    if (!xdr) {
+      const err = new Error("XDR string is required in the request body.");
+      err.statusCode = 400;
+      err.isValidation = true;
+      throw err;
+    }
+
+    let tx;
+    try {
+      // We use TESTNET as default network for decoding, but since we are not 
+      // submitting, the network passphrase only affects the hash calculation.
+      const networkPassphrase = process.env.STELLAR_NETWORK === "mainnet" 
+        ? Networks.PUBLIC 
+        : Networks.TESTNET;
+      
+      tx = new Transaction(xdr, networkPassphrase);
+    } catch (e) {
+      const err = new Error(`Invalid or malformed XDR: ${e.message}`);
+      err.statusCode = 400;
+      err.isValidation = true;
+      throw err;
+    }
+
+    const decoded = {
+      sourceAccount: tx.source,
+      fee: tx.fee,
+      sequenceNumber: tx.sequence,
+      memo: tx.memo.value ? {
+        type: tx.memo.type,
+        value: tx.memo.value.toString()
+      } : null,
+      timeBounds: tx.timebounds ? {
+        minTime: tx.timebounds.minTime,
+        maxTime: tx.timebounds.maxTime
+      } : null,
+      operations: tx.operations.map((op) => {
+        // The SDK operations are already fairly clean, but we ensure 
+        // they are plain JSON objects.
+        const formattedOp = { ...op };
+        
+        // Remove internal SDK properties if any (usually starting with _)
+        Object.keys(formattedOp).forEach(key => {
+          if (key.startsWith("_")) delete formattedOp[key];
+        });
+
+        return formattedOp;
+      })
+    };
+
+    return success(res, decoded);
   } catch (err) {
     next(err);
   }
