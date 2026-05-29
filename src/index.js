@@ -11,6 +11,7 @@ const { setupWebSocket } = require("./websocket");
 const rateLimiter = require("./middleware/rateLimiter");
 const contentTypeValidator = require("./middleware/contentTypeValidator");
 const errorHandler = require("./middleware/errorHandler");
+const apiKeyMiddleware = require("./middleware/apiKey");
 
 const networkStatusRouter = require("./routes/networkStatus");
 const feeEstimateRouter = require("./routes/feeEstimate");
@@ -50,6 +51,9 @@ app.get("/health", (req, res) => {
     },
   });
 });
+
+// ── API Key Authentication ─────────────────────────────────────────────────────
+app.use(apiKeyMiddleware);
 
 // ── API Routes ───────────────────────────────────────────────────────────────
 app.use("/network-status", networkStatusRouter);
