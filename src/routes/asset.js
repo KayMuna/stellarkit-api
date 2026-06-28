@@ -8,7 +8,7 @@ const { success } = require("../utils/response");
 const { formatBalance } = require("../utils/formatBalance");
 const { assetHoldersRateLimiter } = require("../middleware/rateLimiter");
 const normalizeAssetCode = require("../middleware/normalizeAssetCode");
-const { validateAccountId, validateAssetCode, validateAsset } = require("../utils/validators");
+const { validateAccountId, validateAssetCode, validateAsset, validateLimit } = require("../utils/validators");
 const { parsePaginationParams } = require("../utils/pagination");
 const { makeAssetNotFoundError } = require("../utils/errors");
 const cacheService = require("../services/cache");
@@ -61,7 +61,7 @@ router.get(
       validateAsset(code, issuer);
 
       const assetCode = code.toUpperCase();
-      const { limit, order, cursor } = parsePaginationParams(req.query, 200);
+      const { limit, order, cursor } = parsePaginationParams(req.query);
 
       let query = server
         .accounts()
@@ -359,7 +359,7 @@ router.get("/search", async (req, res, next) => {
 
     validateAssetCode(code);
     const assetCode = code.toUpperCase();
-    const limit = Math.min(parseInt(rawLimit) || 10, 50);
+    const limit = validateLimit(rawLimit ?? 20);
 
     const assetsResponse = await server
       .assets()
