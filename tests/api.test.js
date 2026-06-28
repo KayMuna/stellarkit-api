@@ -5,10 +5,75 @@ const { server } = require("../src/config/stellar");
 const { networkStatusCache, feeEstimateCache } = require("../src/utils/cache");
 const { server } = require("../src/config/stellar");
 
+const { startServer } = app;
+
 describe("StellarKit API", () => {
   // Clear caches before each test
   beforeEach(() => {
     cacheService.flush();
+  });
+
+  describe("startup cache warming", () => {
+    let httpServer;
+
+    afterEach(async () => {
+      jest.restoreAllMocks();
+      if (httpServer) {
+        await new Promise((resolve) => httpServer.close(resolve));
+        httpServer = null;
+      }
+    });
+
+    it("warms network-status and fee-estimate on startup so the next request is a cache hit", async () => {
+      jest.spyOn(server, "ledgers").mockReturnValue({
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        call: jest.fn().mockResolvedValue({
+          records: [
+            {
+              sequence: 12345,
+              closed_at: "2026-06-28T00:00:00Z",
+              successful_transaction_count: 3,
+              operation_count: 10,
+              total_coins: "100000000000",
+              fee_pool: "5000000000",
+              base_fee_in_stroops: 100,
+              base_reserve_in_stroops: 50000000,
+              protocol_version: 19,
+            },
+          ],
+        }),
+      });
+
+      jest.spyOn(server, "feeStats").mockResolvedValue({
+        fee_charged: {
+          min: "100",
+          p10: "100",
+          p50: "200",
+          p95: "300",
+          p99: "400",
+          max: "500",
+        },
+        last_ledger_base_fee: 100,
+        ledger_capacity_usage: "0.5",
+      });
+
+      const logger = { log: jest.fn(), error: jest.fn() };
+      httpServer = startServer({ app, port: 0, logger, setupWebSocket: jest.fn() });
+
+      await new Promise((resolve) => httpServer.once("listening", resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(networkStatusCache.get("network-status")).toBeTruthy();
+      expect(feeEstimateCache.get("fee-estimate:1")).toBeTruthy();
+      expect(logger.log).toHaveBeenCalledWith(expect.stringContaining("[CACHE WARM]"));
+
+      const warmReq = await request(httpServer).get("/network-status");
+      const feeReq = await request(httpServer).get("/fee-estimate");
+
+      expect(warmReq.headers["x-cache"]).toBe("HIT");
+      expect(feeReq.headers["x-cache"]).toBe("HIT");
+    });
   });
 
   // ── Health ─────────────────────────────────────────────────────────────────
@@ -87,6 +152,12 @@ describe("StellarKit API", () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.headers["access-control-allow-origin"]).toBe("*");
+    });
+
+    it("returns and echoes a request ID header", async () => {
+      const res = await request(app).get("/health").set("X-Request-ID", "req-123");
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["x-request-id"]).toBe("req-123");
     });
   });
 

@@ -17,9 +17,10 @@ const { mapHorizonErrorToStatus } = require("../utils/horizonStatusMapper");
 function logError(status, req, message) {
   if (process.env.NODE_ENV === "test") return;
   if (status >= 400) {
+    const requestId = req.requestId || "-";
     const label = status >= 500 ? "ERROR" : "WARN";
     console.error(
-      `[${label}] ${req.method} ${req.path} → ${status} | ${message}`
+      `[${label}] [${requestId}] ${req.method} ${req.path} → ${status} | ${message}`
     );
   }
 }
