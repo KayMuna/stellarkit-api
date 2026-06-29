@@ -197,6 +197,8 @@ StellarKit API currently supports Soroban contract inspection through the `/soro
 
 ## Getting Started
 
+New to Stellar or this API? Start with the **[Getting Started Guide](docs/getting-started.md)** for step-by-step instructions. Also see the **[Glossary](docs/glossary.md)** for explanations of Stellar-specific terminology.
+
 ### Prerequisites
 
 - Node.js >= 18
@@ -253,137 +255,11 @@ Visit `http://localhost:3000` after startup.
 
 ---
 
+## Stellar Terminology
 
-## Optional API Key Authentication (Issue #198)
-
-StellarKit API supports optional API key protection using environment variables:
-
-```env
-REQUIRE_API_KEY=true
-API_KEYS=key1,key2,key3
-```
-
-When `REQUIRE_API_KEY` is enabled, clients must send the API key in the `X-API-Key` request header. The `/health` and `/` endpoints remain public even when authentication is enabled.
-
-This feature is implemented in `src/middleware/apiKey.js` and covered by unit tests in `tests/apiKeyMiddleware.test.js`.
-
-## FAQ
-
-### What is the difference between testnet and mainnet?
-The testnet is a free Stellar network for development and experimentation. Mainnet is the real network for live value transfers. Use testnet while building and switch to mainnet only when you are ready for production.
-
-### How do I get a testnet account?
-You can create a testnet account using Stellar's Friendbot service. In StellarKit API, use `GET /utils/friendbot/:accountId` with a valid public key to fund a new testnet account instantly.
-
-### What are stroops?
-A stroop is the smallest unit of XLM, just like a cent is the smallest unit of a dollar. One XLM equals 10 million stroops, so balances and fees are often measured in stroops internally.
-
-### Why does Stellar require a minimum balance?
-Stellar requires a minimum balance to prevent spam and keep the ledger efficient. Each account and each ledger entry (trustline, offer, data entry, signer) increases the reserve required to keep the account active.
-
-### What is XDR?
-XDR is the binary format Stellar uses to encode transactions, ledger entries, and protocol data. It lets Stellar transmit structured data in a compact, predictable way across the network.
-
-### How can I read claimable balance predicates?
-Claimable balance predicates are conditions that control when a claim is allowed. Common types include `unconditional`, `abs_before`, and `abs_after`. You can also combine them with `and`, `or`, and `not` to build more complex rules.
-
-### What is a home domain?
-A home domain is an optional string attached to a Stellar account that identifies the account's website or service. Wallets and anchors use it for branding, federation lookups, and verifying issuer relationships.
-
-### Are there rate limits for StellarKit API?
-Yes. StellarKit API uses a global rate limiter by default to protect the service and the underlying Horizon endpoints. The default limit is 100 requests per IP per 15 minutes, and it can be adjusted with `RATE_LIMIT_MAX`.
+New to Stellar? See the **[Glossary](docs/glossary.md)** for plain-language explanations of stroops, trustlines, claimable balances, anchors, liquidity pools, and other key concepts.
 
 ---
-
-## Stellar Glossary
-
-This glossary defines key Stellar-specific terms that appear throughout the API responses and Stellar documentation. Use this reference to understand the fundamental concepts of the Stellar ecosystem.
-
-### Base Reserve
-The fundamental unit of account reserve on the Stellar network, currently set to 0.5 XLM. Every account must hold a minimum of 2 base reserves (1 XLM) to exist, and each subentry increases the reserve requirement by 1 base reserve.
-
-### Claimable Balance
-A Stellar ledger entry that holds funds on behalf of one or more future recipients without requiring those recipients to exist on the network. Claimable balances can have predicates that control when funds can be claimed, enabling conditional and deferred transfers.
-
-### DEX
-The Decentralized Exchange built into Stellar's ledger. It allows users to create and fill limit orders for any pair of assets, forming automatic order books without a central operator.
-
-### Home Domain
-An optional string attached to a Stellar account that identifies the account's website or service. Used for branding, federation lookups, and verifying issuer relationships in wallets and anchors.
-
-### Horizon
-Stellar's REST API that provides access to the ledger, transactions, operations, and account data. Horizon is the primary interface for querying the Stellar network state and submitting transactions.
-
-### Ledger
-The main database of the Stellar blockchain that stores all accounts, balances, trustlines, offers, data entries, and other ledger entries. Each ledger closes approximately every 5-6 seconds, creating permanent historical records.
-
-### Liquidity Pool
-An automated market maker (AMM) that holds equal-value reserves of two assets and facilitates swaps between them. Pool shares represent ownership stakes, and traders pay fees that are distributed to share holders.
-
-### Memo
-An optional text, ID, hash, or return value attached to a transaction. Memos help organize and reference transactions but do not affect transaction logic or validation.
-
-### Sequence Number
-A counter maintained for each Stellar account that increments with each transaction. The sequence number ensures transactions are processed in order and prevents transaction replays. Clients must increment the sequence number when building multiple transactions.
-
-### Soroban
-Stellar's smart contract platform that allows developers to write WebAssembly (WASM) programs and execute them on the Stellar ledger. Soroban enables complex business logic beyond traditional Stellar operations.
-
-### Stellar TOML
-A configuration file hosted on an organization's domain that describes its Stellar-enabled services, supported assets, and federation information. Wallets and applications use Stellar TOML to verify issuer authenticity and discover federated addresses.\n\n### Stroop
-The smallest unit of XLM, similar to a cent in traditional currency. One XLM equals 10 million stroops. Fees and small balances are often expressed in stroops internally.
-
-### Subentry
-Any ledger entry owned by an account other than the account itself. Trustlines, open offers, data entries, and additional signers are all subentries. Each subentry increases the account's minimum balance requirement by 1 base reserve (0.5 XLM).
-
-### Trustline
-A connection between an account and a specific asset (identified by code and issuer). An account must establish a trustline before it can hold or receive a non-native asset. Trustlines have limits that control the maximum amount of an asset an account can hold.
-
-### XDR
-External Data Representation; the binary serialization format Stellar uses to encode transactions, operations, and ledger data. XDR ensures compact, deterministic encoding for signing and network transmission.
-
----
-
-
-## Testnet vs Mainnet
-
-Stellar operates two public networks: **testnet** and **mainnet**. StellarKit API supports both and switches between them with a single environment variable.
-
-| Feature | Testnet | Mainnet |
-|---|---|---|
-| Real funds | ❌ No — test XLM only | ✅ Yes — real XLM and assets |
-| Network resets | ✅ Periodic resets (quarterly) | ❌ Never resets |
-| Friendbot availability | ✅ Free account funding via `GET /utils/friendbot/:accountId` | ❌ Not available |
-| Horizon URL | `https://horizon-testnet.stellar.org` | `https://horizon.stellar.org` |
-| Recommended for | Development and testing | Production only |
-
-### Switching Between Networks
-
-Open your `.env` file and change `STELLAR_NETWORK`. That is the only value you need to update — `HORIZON_URL` is automatically derived from it and can be left blank.
-
-**Testnet (default):**
-```env
-STELLAR_NETWORK=testnet
-HORIZON_URL=
-```
-
-**Mainnet:**
-```env
-STELLAR_NETWORK=mainnet
-HORIZON_URL=
-```
-
-Restart the server after changing environment variables for the new values to take effect.
-
-### Mainnet Safety Considerations
-
-> ⚠️ **Before switching to mainnet, read this carefully.**
->
-> - **Real funds are at risk.** Every transaction on mainnet moves real XLM and real assets. Mistakes cannot be undone.
-> - **Friendbot is not available.** You cannot fund accounts for free on mainnet. Accounts must be funded with real XLM.
-> - **The network never resets.** Unlike testnet, mainnet state is permanent. There is no way to undo a transaction or recover a lost private key.
-> - **Never use testnet keypairs on mainnet.** Keys generated or printed during `npm run seed` are for testnet only. Generate fresh keypairs for mainnet and keep private keys secure.
-> - **Test thoroughly on testnet first.** Only switch to `STELLAR_NETWORK=mainnet` when your integration is fully validated.
 
 ## Understanding Stellar Account Reserves
 
