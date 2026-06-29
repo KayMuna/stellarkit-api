@@ -1,4 +1,5 @@
 const NodeCache = require("node-cache");
+const logger = require("../utils/logger");
 
 /**
  * Centralised in-memory TTL cache service backed by node-cache.
@@ -70,13 +71,13 @@ class CacheService {
     if (value !== undefined) {
       this.hits++;
       if (process.env.NODE_ENV !== "test") {
-        console.debug(`[CACHE HIT] ${key}`);
+        logger.debug(`Cache hit: ${key}`);
       }
       return value;
     }
     this.misses++;
     if (process.env.NODE_ENV !== "test") {
-      console.debug(`[CACHE MISS] ${key}`);
+      logger.debug(`Cache miss: ${key}`);
     }
     return undefined;
   }

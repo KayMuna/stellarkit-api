@@ -3,12 +3,13 @@
  * Formats Horizon / Stellar SDK errors into consistent JSON responses.
  * All non-Horizon errors are wrapped in StellarKitError for consistency.
  */
+const logger = require("../utils/logger");
 const { translateHorizonError } = require("../utils/horizonErrors");
 const { mapHorizonErrorToStatus } = require("../utils/horizonStatusMapper");
 const StellarKitError = require("../utils/StellarKitError");
 
 /**
- * Logs 4xx and 5xx responses to the console.
+ * Logs 4xx and 5xx responses using the structured logger.
  * Suppressed when NODE_ENV=test to keep test output clean.
  *
  * @param {number} status - HTTP status code
@@ -19,9 +20,15 @@ function logError(status, req, message) {
   if (process.env.NODE_ENV === "test") return;
   if (status >= 400) {
     const requestId = req.requestId || "-";
-    const label = status >= 500 ? "ERROR" : "WARN";
-    console.error(
-      `[${label}] [${requestId}] ${req.method} ${req.path} → ${status} | ${message}`
+    const logLevel = status >= 500 ? "error" : "warn";
+    logger[logLevel](
+      {
+        requestId,
+        method: req.method,
+        path: req.path,
+        status,
+      },
+      message
     );
   }
 }

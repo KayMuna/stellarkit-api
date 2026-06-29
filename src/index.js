@@ -6,6 +6,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const compression = require("compression");
 
+const logger = require("./utils/logger");
 const { setupWebSocket } = require("./websocket");
 const { server } = require("./config/stellar");
 const cacheService = require("./services/cache");
@@ -17,6 +18,7 @@ const errorHandler = require("./middleware/errorHandler");
 const requestIdMiddleware = require("./middleware/requestId");
 const apiKeyMiddleware = require("./middleware/apiKeyAuth");
 const sanitize = require("./middleware/sanitize");
+const etagMiddleware = require("./middleware/etag");
 const networkStatusRouter = require("./routes/networkStatus");
 const feeEstimateRouter = require("./routes/feeEstimate");
 const accountRouter = require("./routes/account");
@@ -34,7 +36,7 @@ const networkRouter = require("./routes/network");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-async function warmNetworkStatusCache({ logger = console, horizonServer = server } = {}) {
+async function warmNetworkStatusCache({ logger: customLogger = logger, horizonServer = server } = {}) {
   const ledger = await horizonServer.ledgers().order("desc").limit(1).call();
   const latest = ledger.records[0];
 
@@ -61,10 +63,10 @@ async function warmNetworkStatusCache({ logger = console, horizonServer = server
   };
 
   cacheService.set("network-status", data);
-  logger.log("[CACHE WARM] /network-status");
+  customLogger.info("[CACHE WARM] /network-status");
 }
 
-async function warmFeeEstimateCache({ logger = console, horizonServer = server } = {}) {
+async function warmFeeEstimateCache({ logger: customLogger = logger, horizonServer = server } = {}) {
   const feeStats = await horizonServer.feeStats();
   const operations = 1;
 
@@ -118,13 +120,13 @@ async function warmFeeEstimateCache({ logger = console, horizonServer = server }
   };
 
   cacheService.set("fee-estimate:1", data);
-  logger.log("[CACHE WARM] /fee-estimate");
+  customLogger.info("[CACHE WARM] /fee-estimate");
 }
 
-async function warmStartupCaches({ logger = console, horizonServer = server } = {}) {
+async function warmStartupCaches({ logger: customLogger = logger, horizonServer = server } = {}) {
   const warmers = [
-    warmNetworkStatusCache({ logger, horizonServer }),
-    warmFeeEstimateCache({ logger, horizonServer }),
+    warmNetworkStatusCache({ logger: customLogger, horizonServer }),
+    warmFeeEstimateCache({ logger: customLogger, horizonServer }),
   ];
 
   const results = await Promise.allSettled(warmers);
@@ -132,7 +134,7 @@ async function warmStartupCaches({ logger = console, horizonServer = server } = 
     if (result.status === "rejected") {
       const endpoint = index === 0 ? "/network-status" : "/fee-estimate";
       const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-      logger.error(`[CACHE WARM] failed ${endpoint}: ${reason}`);
+      customLogger.error(`[CACHE WARM] failed ${endpoint}: ${reason}`);
     }
   });
 }
@@ -187,21 +189,22 @@ app.get("/health", (req, res) => {
 app.use(apiKeyMiddleware);
 
 // ── API Routes ───────────────────────────────────────────────────────────────
-app.use("/network-status", networkStatusRouter);
-app.use("/fee-estimate", feeEstimateRouter);
+// Apply ETag middleware to cached endpoints
+app.use("/network-status", etagMiddleware, networkStatusRouter);
+app.use("/fee-estimate", etagMiddleware, feeEstimateRouter);
 const accountCounterpartiesRouter = require("./routes/account.counterparties");
-app.use("/account", accountRouter);
-app.use("/account", accountCounterpartiesRouter);
+app.use("/account", etagMiddleware, accountRouter);
+app.use("/account", etagMiddleware, accountCounterpartiesRouter);
 app.use("/transactions", transactionsRouter);
-app.use("/asset", assetRouter);
-app.use("/dex", dexRouter);
-app.use("/liquidity-pools", liquidityPoolRouter);
+app.use("/asset", etagMiddleware, assetRouter);
+app.use("/dex", etagMiddleware, dexRouter);
+app.use("/liquidity-pools", etagMiddleware, liquidityPoolRouter);
 app.use("/stream", streamRouter);
 app.use("/utils", utilsRouter);
 app.use("/stellar-toml", stellarTomlRouter);
-app.use("/claimable-balances", claimableBalancesRouter);
+app.use("/claimable-balances", etagMiddleware, claimableBalancesRouter);
 app.use("/cache", cacheStatsRouter);
-app.use("/network", networkRouter);
+app.use("/network", etagMiddleware, networkRouter);
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
