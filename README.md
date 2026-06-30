@@ -1878,6 +1878,12 @@ These endpoints wrap Horizon's order book and path-finding APIs, normalizing the
 
 ---
 
+## 🗺️ Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the project's planned direction across near-term, medium-term, and long-term horizons — including upcoming endpoints, SDK milestones, and ecosystem integrations.
+
+---
+
 ## 🌐 Stellar Resources
 
 - [Stellar Developers Portal](https://developers.stellar.org)
